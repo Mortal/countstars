@@ -1,0 +1,6 @@
+astropy
+git+https://github.com/Mortal/bintable
+scipy
+scikit-learn
+
+tqdm
