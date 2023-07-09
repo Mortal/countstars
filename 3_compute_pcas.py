@@ -5,7 +5,6 @@ import pickle
 
 import bintable
 import numpy as np
-import scipy.linalg
 from sklearn.decomposition import IncrementalPCA
 from tqdm import tqdm
 
