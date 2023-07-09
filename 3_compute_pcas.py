@@ -1,3 +1,4 @@
+import argparse
 import copy
 import os
 import pickle
@@ -9,9 +10,19 @@ from sklearn.decomposition import IncrementalPCA
 from tqdm import tqdm
 
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--input-data", required=True)
+parser.add_argument("--input-clusters", required=True)
+parser.add_argument("--output-pcas", required=True)
+
+
 def main() -> None:
-    df = bintable.read("df_reordered")
-    Z = np.load("df_reordered_clusters.npy", mmap_mode="r")
+    args = parser.parse_args()
+    assert args.input_data.endswith("/bintable.json")
+    assert args.input_clusters.endswith(".npy")
+    assert args.output_pcas.endswith(".pkl")
+    df = bintable.read(os.path.dirname(args.input_data))
+    Z = np.load(args.input_clusters, mmap_mode="r")
     assert Z.ndim == 2
     n = len(df)
     assert Z.shape[0] == n - 1
@@ -90,9 +101,9 @@ def main() -> None:
             assert pca.components_.shape == (3, 3)
             t.update(y - x)
     t.close()
-    with open("pcas.pkl_", "wb") as fp:
+    with open(args.output_pcas + "_", "wb") as fp:
         pickle.dump(pcas, fp)
-    os.rename("pcas.pkl_", "pcas.pkl")
+    os.rename(args.output_pcas + "_", args.output_pcas)
 
 
 if __name__ == "__main__":

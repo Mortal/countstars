@@ -1,4 +1,6 @@
+import argparse
 import collections
+import os
 import pickle
 from dataclasses import dataclass
 from typing import Callable
@@ -8,6 +10,12 @@ import numpy as np
 import scipy.spatial
 from sklearn.decomposition import IncrementalPCA
 from tqdm import tqdm
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--input-pcas", required=True)
+parser.add_argument("--input-data", required=True)
+parser.add_argument("--output-counts", required=True)
 
 
 @dataclass
@@ -69,7 +77,6 @@ def visit_kdtree(
         if f(node.boxmin, node.boxmax, tree.points[node.i : node.j]):
             visit.append(node.right)
             visit.append(node.left)
-    # print(visits)
 
 
 class PointInsideCounter:
@@ -118,7 +125,11 @@ class PointInsideCounter:
 
 
 def main() -> None:
-    with open("pcas.pkl", "rb") as fp:
+    args = parser.parse_args()
+    assert args.input_pcas.endswith(".pkl")
+    assert args.input_data.endswith("/bintable.json")
+    assert args.output_counts.endswith(".npy")
+    with open(args.input_pcas, "rb") as fp:
         pcas: list[IncrementalPCA | None] = pickle.load(fp)
     assert isinstance(pcas, list)
     assert all(pca is None or isinstance(pca, IncrementalPCA) for pca in pcas)
@@ -130,77 +141,38 @@ def main() -> None:
         pca is None or pca.components_.shape == (n_components, n_features)
         for pca in pcas
     )
-    df = bintable.read("df_reordered")
-    Z = np.load("df_reordered_clusters.npy")
-
+    df = bintable.read(os.path.dirname(args.input_data))
+    # Z = np.load("df_reordered_clusters.npy")
     data = np.hstack(df["scaled_En", "scaled_Lz", "scaled_Lperp"].columns.values())
-
-    df_artificial = bintable.read("df_artificial")
-    data_artificial = np.hstack(
-        df_artificial["scaled_En", "scaled_Lz", "scaled_Lperp"].columns.values()
-    )
-    index_artificial = df_artificial["index"]
-
-    tree = build_kdtree(data.copy())
 
     # Length (in standard deviations) of axis of ellipsoidal cluster boundary
     N_sigma_ellipse_axis = 2.83
     n_std = N_sigma_ellipse_axis
 
-    artificial_count = int(np.max(index_artificial)) + 1
-    data_artificials = [
-        data_artificial[index_artificial == i] for i in range(artificial_count)
-    ]
-    tree_arts = [build_kdtree(d.copy()) for d in data_artificials]
-
     output = []
-    t = tqdm(total=sum(pca is not None for pca in pcas))
-    # for i, pca in enumerate(tqdm(pcas[170000 : 171000])):
-    for i, pca in enumerate(pcas):
-        if pca is None:
-            output.append((i, -1, *([-1] * artificial_count)))
-            continue
-        t.update(1)
+    pcas2 = [(i, pca) for i, pca in enumerate(pcas) if pca is not None]
 
-        if 1:
-            ctr = PointInsideCounter(pca=pca, n_std=n_std)
-            visit_kdtree(tree, ctr)
-            inside = ctr.inside
-            ctr.inside = 0
-
-            ctr_list = []
-            for tree_art in tree_arts:
-                visit_kdtree(tree_art, ctr)
-                ctr_list.append(ctr.inside)
-                ctr.inside = 0
-            output.append((i, inside, *ctr_list))
-
-        else:
+    if args.no_kdtree:
+        for i, pca in tqdm(pcas2):
+            assert pca is not None
             box = pca.inverse_transform(
                 np.r_[n_std ** 2 * np.eye(3), n_std ** 2 * -np.eye(3)]
             )
             boxmin = box.min(axis=0, keepdims=True)
             boxmax = box.max(axis=0, keepdims=True)
             boxfilt = np.all((boxmin <= data) & (data <= boxmax), axis=1)
-            boxfilt_art = np.all(
-                (boxmin <= data_artificial) & (data_artificial <= boxmax), axis=1
-            )
-
             transformed = pca.transform(data[boxfilt])
-            data_artificial_filtered = data_artificial[boxfilt_art]
             filt = (transformed ** 2).sum(axis=1) <= n_std ** 2
-            if len(data_artificial_filtered) == 0:
-                ctr = collections.Counter([0][:0])
-            else:
-                transformed_art = pca.transform(data_artificial_filtered)
-                filt_art = (transformed_art ** 2).sum(axis=1) <= n_std ** 2
-                index_filt = index_artificial[boxfilt_art][filt_art]
-                ctr = collections.Counter(index_filt)
-            ctr_list = [ctr.get(j, 0) for j in range(artificial_count)]
-            output.append((i, np.sum(filt), *ctr_list))
+            output.append((i, np.sum(filt)))
+    else:
+        tree = build_kdtree(data)
+        for i, pca in tqdm(pcas2):
+            assert pca is not None
+            ctr = PointInsideCounter(pca=pca, n_std=n_std)
+            visit_kdtree(tree, ctr)
+            output.append((i, ctr.inside))
 
-    t.close()
-    np.save("counts.npy", output, allow_pickle=False)
+    np.save(args.output_counts, output, allow_pickle=False)
 
 
 if __name__ == "__main__":

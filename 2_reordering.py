@@ -1,10 +1,25 @@
+import argparse
+import os
+
 import bintable
 import numpy as np
 
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--input-data", required=True)
+parser.add_argument("--input-clusters", required=True)
+parser.add_argument("--output-data", required=True)
+parser.add_argument("--output-clusters", required=True)
+
+
 def main() -> None:
+    args = parser.parse_args()
+    assert args.input_data.endswith("/bintable.json")
+    assert args.input_clusters.endswith(".npy")
+    assert args.output_data.endswith("/bintable.json")
+    assert args.output_clusters.endswith(".npy")
     df = bintable.read(
-        "df",
+        os.path.dirname(args.input_data),
         only_columns=[
             "SOURCE_ID_GAIA",
             "scaled_En",
@@ -12,7 +27,9 @@ def main() -> None:
             "scaled_Lperp",
         ],
     )
-    Z = np.load("Z.npy", mmap_mode="r")
+    Z = np.load(args.input_clusters, mmap_mode="r")
+    assert Z.ndim == 2
+    assert Z.shape[1] == 4
 
     output_points: list[int] = []
     output_clusters: list[tuple[int, int, float, int, int]] = []
@@ -57,8 +74,8 @@ def main() -> None:
             output_clusters.append((a, b, dist, x, y))
 
     assert len(df[output_points]) == n
-    bintable.write(df[output_points], "df_reordered")
-    np.save("df_reordered_clusters.npy", output_clusters)
+    bintable.write(df[output_points], os.path.dirname(args.output_data))
+    np.save(args.output_clusters, output_clusters)
 
 
 if __name__ == "__main__":
