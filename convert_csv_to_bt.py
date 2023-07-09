@@ -1,13 +1,21 @@
+import argparse
+
+import bintable
 import numpy as np
 from astropy.table import Table
-import bintable
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--input-csv", required=True)
+parser.add_argument("--output", required=True)
 
 
 def main() -> None:
-    t = Table.read("df.csv")
-    bintable.write(t, "df")
-    t = Table.read("df_artificial.csv")
-    bintable.write(t, "df_artificial")
+    args = parser.parse_args()
+    assert args.input_csv.endswith(".csv")
+    assert args.output.endswith("/bintable.json")
+    t = Table.read(args.input_csv)
+    bintable.write(t, os.path.dirname(args.output))
 
 
 if __name__ == "__main__":
