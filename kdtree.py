@@ -58,7 +58,10 @@ def visit_kdtree(
         visits += 1
         i = visit.pop()
         if i < n:
-            f(tree.points[i], tree.points[i], tree.points[i : i + 1])
+            if f(tree.points[i], tree.points[i], tree.points[i : i + 1]):
+                raise Exception(
+                    "visit_kdtree() callback requested recursion on base level"
+                )
             continue
         node = tree.nodes[i - n]
         if f(node.boxmin, node.boxmax, tree.points[node.i : node.j]):
@@ -67,6 +70,8 @@ def visit_kdtree(
 
 
 class PointInsideCounter:
+    base_case = 50000
+
     def __init__(self, pca: IncrementalPCA, *, n_std: float) -> None:
         self.pca = pca
         self.n_std = n_std
@@ -81,7 +86,7 @@ class PointInsideCounter:
         overlap = (boxmin < self.boxmax) & (self.boxmin < boxmax)
         if not overlap.all():
             return False
-        if len(points) < 50000:
+        if len(points) < self.base_case:
             boxfilt = (
                 (self.boxmin[None, :] <= points) & (points <= self.boxmax[None, :])
             ).all(axis=1)
