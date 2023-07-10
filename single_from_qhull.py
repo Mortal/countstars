@@ -1,12 +1,7 @@
-import time
-
 import numpy as np
-
 from scipy.sparse import coo_array, csr_matrix
 from scipy.sparse.csgraph import minimum_spanning_tree
 from scipy.spatial import Delaunay
-from scipy.spatial.distance import pdist
-import scipy.cluster.hierarchy
 
 
 def single_linkage(points):
@@ -84,80 +79,28 @@ def euclidean_mst_quadratic(points):
 
 def single_linkage_from_mst(Tcsr):
     # Run Union-Find on MST to obtain single-linkage clustering.
-    Z = []
-    n = Tcsr.shape[0]
-    parent = list(range(n))
-    subtree_size = [1] * n
-
-    def representative(i):
-        while parent[i] != i:
-            parent[i] = i = parent[parent[i]]
-        return i
-
-    def union(i, j):
-        i = representative(i)
-        j = representative(j)
-        parent[i] = j
-        subtree_size[j] += subtree_size[i]
+    Z: list[tuple[int, int, float, int]] = []
+    n: int = Tcsr.shape[0]
+    parent: list[int] = list(range(n))
+    subtree_size: list[int] = [1] * n
 
     for i in np.argsort(Tcsr.data):
-        u = representative(Tcsr.row[i])
-        v = representative(Tcsr.col[i])
+        u = Tcsr.row[i]
+        v = Tcsr.col[i]
         dist = Tcsr.data[i]
-        n = subtree_size[u] + subtree_size[v]
+        while parent[u] != u:
+            parent[u] = u = parent[parent[u]]
+        while parent[v] != v:
+            parent[v] = v = parent[parent[v]]
+        my_size = subtree_size[u] + subtree_size[v]
         parent[u] = parent[v] = len(parent)
         parent.append(len(parent))
-        subtree_size.append(n)
-        u, v = sorted((u, v))
-        Z.append((u, v, dist, n))
+        subtree_size.append(my_size)
+        if u > v:
+            u, v = v, u
+        Z.append((u, v, dist, my_size))
 
     return np.array(Z)
-
-
-def main() -> None:
-    seed = 42
-    np.random.seed(seed)
-    pts = np.random.random((20, 10))
-    print(f"Random points (seed={seed}):")
-    print(pts)
-    a = single_linkage(pts)
-    print("\nOutput of single_linkage():")
-    print(a)
-    b = scipy.cluster.hierarchy.linkage(pts)
-    print("\nOutput of scipy.cluster.hierarchy.linkage():")
-    print(b)
-    assert np.allclose(a, b)
-
-    np.random.seed(seed)
-    pts = np.random.random((10000, 2))
-    t1 = time.time()
-    print(single_linkage(pts)[-1])
-    t2 = time.time()
-    print(f"Time to run N log N time algorithm on {pts.shape[0]} {pts.shape[1]}-d points: {t2 - t1} s")
-
-    np.random.seed(seed)
-    pts = np.random.random((10000, 2))
-    t1 = time.time()
-    print(single_linkage_quadratic_time(pts)[-1])
-    t2 = time.time()
-    print(f"Time to run N² time algorithm on {pts.shape[0]} {pts.shape[1]}-d points: {t2 - t1} s")
-
-    np.random.seed(seed)
-    pts = np.random.random((100000, 2))
-    t1 = time.time()
-    print(single_linkage(pts)[-1])
-    t2 = time.time()
-    print(f"Time to run N log N time algorithm on {pts.shape[0]} {pts.shape[1]}-d points: {t2 - t1} s")
-
-    from sklearn.cluster import AgglomerativeClustering  # type: ignore[import]
-
-    for n in (10000, 20000, 40000):
-        np.random.seed(seed)
-        pts = np.random.random((n, 2))
-        t1 = time.time()
-        print(AgglomerativeClustering(linkage="single").fit(pts))
-        t2 = time.time()
-        print(f"Time to run AgglomerativeClustering time algorithm on {pts.shape[0]} {pts.shape[1]}-d points: {t2 - t1} s")
 
 
 if __name__ == "__main__":
